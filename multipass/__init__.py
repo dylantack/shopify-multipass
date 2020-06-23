@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 import datetime
 import json
-from Crypto.Cipher import AES
-from Crypto.Hash import SHA256, HMAC
-from Crypto.Random import get_random_bytes
+import hashlib
+import hmac
 from base64 import urlsafe_b64encode
+import os
+import secrets
 
+from M2Crypto import EVP
 
 class Multipass:
     def __init__(self, secret):
-        key = SHA256.new(secret.encode('utf-8')).digest()
+        key = hashlib.sha256(secret.encode()).digest()
         self.encryptionKey = key[0:16]
         self.signatureKey = key[16:32]
 
@@ -23,13 +25,11 @@ class Multipass:
         return '{0}/account/login/multipass/{1}'.format(url, token)
 
     def encrypt(self, plainText):
-        plainText = self.pad(plainText)
-        iv = get_random_bytes(AES.block_size)
-        cipher = AES.new(self.encryptionKey, AES.MODE_CBC, iv)
-        return iv + cipher.encrypt(plainText)
+        iv = os.urandom(16)
+        cipher = EVP.Cipher(alg='aes_128_cbc', key=self.encryptionKey, iv=iv, op=1)
+        cipherText = cipher.update(plainText.encode())
+        cipherText += cipher.final()
+        return iv + cipherText
 
-    def sign(self, secret):
-        return HMAC.new(self.signatureKey, secret, SHA256).digest()
-
-    def pad(self, s):
-        return s + (AES.block_size - len(s) % AES.block_size) * chr(AES.block_size - len(s) % AES.block_size)
+    def sign(self, message):
+        return hmac.new(self.signatureKey, message, hashlib.sha256).digest()
